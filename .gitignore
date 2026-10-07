@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local development (a token for docker compose belongs in an untracked .env)
+development/.env
+.env
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

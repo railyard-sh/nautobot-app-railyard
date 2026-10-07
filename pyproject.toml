@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nautobot-app-railyard"
+version = "0.1.0"
+description = "Railyard for Nautobot: export a Railyard data-centre design into Nautobot, and import Nautobot locations into Railyard."
+readme = "README.md"
+# railyard-sync needs Python 3.12; Nautobot supports it from 2.3.
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Railyard", email = "support@railyard.sh" }]
+keywords = ["nautobot", "nautobot-app", "nautobot-plugin", "dcim", "diffsync", "railyard", "ssot"]
+classifiers = [
+  "Framework :: Django",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.12",
+]
+# Nautobot itself supplies Django, Django REST framework and the DCIM models at runtime.
+# railyard-sync is the shared core (loaders, import flow, DiffSync models and targets); it is installed from its
+# release tag until it is published on PyPI.
+dependencies = [
+  "railyard-sync @ git+https://github.com/railyard-sh/railyard-sync@v0.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/railyard-sh/nautobot-app-railyard"
+Source = "https://github.com/railyard-sh/nautobot-app-railyard"
+Railyard = "https://railyard.sh"
+
+[tool.setuptools.packages.find]
+include = ["nautobot_railyard*"]
+
+[tool.setuptools.package-data]
+nautobot_railyard = ["tests/fixtures/*.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["nautobot_railyard"]
