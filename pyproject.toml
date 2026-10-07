@@ -22,7 +22,7 @@ classifiers = [
 # railyard-sync is the shared core (loaders, import flow, DiffSync models and targets); it is installed from its
 # release tag until it is published on PyPI.
 dependencies = [
-  "railyard-sync @ git+https://github.com/railyard-sh/railyard-sync@v0.2.0",
+  "railyard-sync @ git+https://github.com/railyard-sh/railyard-sync@v0.2.1",
 ]
 
 [project.optional-dependencies]

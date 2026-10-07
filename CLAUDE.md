@@ -47,9 +47,12 @@ Consequences to remember:
   A project allowlist means an import may refresh but not create.
 - Export: dry run = `sync_to_nautobot(dry_run=True)` inside an always-rolled-back transaction; real run = one
   transaction, rolled back (job failed) if `result.errors` is not empty. Conflicts are skipped, not errors.
-- Import: `railyard_sync.importer.flow` — `plan_import`, `preflight`, then conflicts stop the save, an up-to-date
-  refresh is not saved, `flow.save` PUTs with `If-Match`. A dry run saves nothing (it still runs the check).
-- Railyard's 402s are worded by `railyard_sync.cli.deliverable_plan_message` / `plan_limit_message`.
+- Import: railyard-sync's `ImportRun` (`importer/run.py`, the NetBox plugin's import job uses it too) — `fetch`,
+  `build`, `merge`, `check`, then conflicts stop the save, an up-to-date refresh is not saved, `save` PUTs with
+  `If-Match`. A dry run saves nothing (it still runs the check).
+- Railyard's 402s are worded by `railyard_sync.plans` (`deliverable_plan_message`, `plan_limit_message`).
+- The loader is railyard-sync's `NautobotLoader` (a `NautobotReader` over `RESTReader`) given the in-process session:
+  the same mapping the CLI reads with, as the NetBox plugin's ORM reader shares `NetBoxReader`'s.
 - railyard-sync's log lines are forwarded to the job log (`_forward_logs`, INFO+) through its `RedactingFilter`;
   never log a token or a document.
 

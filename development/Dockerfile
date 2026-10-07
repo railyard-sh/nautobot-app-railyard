@@ -4,7 +4,7 @@ ARG PYTHON_VER=3.12
 FROM ghcr.io/nautobot/nautobot:${NAUTOBOT_VERSION}-py${PYTHON_VER}
 
 # railyard-sync, the app's core, from a release tag's archive (no git needed in the image).
-ARG RAILYARD_SYNC_REF=v0.2.0
+ARG RAILYARD_SYNC_REF=v0.2.1
 RUN pip install --no-cache-dir "railyard-sync @ https://github.com/railyard-sh/railyard-sync/archive/${RAILYARD_SYNC_REF}.tar.gz"
 
 # The app, editable: docker-compose.yml mounts the checkout over /source, so edits apply on restart.

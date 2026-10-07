@@ -7,7 +7,18 @@ import copy
 
 from django.contrib.contenttypes.models import ContentType
 from django.test import override_settings
-from nautobot.dcim.models import Cable, Device, DeviceType, Interface, Location, LocationType, Manufacturer, Rack
+from nautobot.dcim.models import (
+    Cable,
+    Device,
+    DeviceType,
+    FrontPort,
+    Interface,
+    Location,
+    LocationType,
+    Manufacturer,
+    Rack,
+    RearPort,
+)
 from nautobot.extras.models import CustomField, ObjectChange, Role, Status, Tag
 from nautobot.ipam.models import IPAddress, IPAddressToInterface, Namespace, Prefix
 from nautobot.users.models import User
@@ -204,3 +215,20 @@ class ExportJobTest(RailyardJobTestCase):
         result = self.export(dryrun=True)
         self.assertNotIn(TOKEN, self.log(result))
         self.assertNotIn(TOKEN, str(result.result))
+
+    def test_front_ports_swapped_in_railyard_are_remapped(self):
+        self.assertSucceeded(self.export())
+        doc = copy.deepcopy(DOCUMENT)
+        for row in doc["objects"]["front-ports"]:
+            row["rear_port__name"] = {"1": "2", "2": "1"}[row["rear_port__name"]]
+        self.railyard.deliverable = doc
+        result = self.export()
+        self.assertSucceeded(result)
+        mapped = {f.name: f.rear_port.name for f in FrontPort.objects.filter(device__name="PP-1")}
+        self.assertEqual(mapped, {"1": "2", "2": "1"})
+        self.assertEqual(set(RearPort.objects.filter(device__name="PP-1").values_list("positions", flat=True)), {1})
+
+    def test_a_0u_device_type_stays_0u(self):
+        self.assertSucceeded(self.export())
+        self.assertEqual(DeviceType.objects.get(model="PDU1").u_height, 0)
+        self.assertIsNone(Device.objects.get(name="PDU-1").position)

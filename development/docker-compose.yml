@@ -6,7 +6,7 @@ x-nautobot: &nautobot
     dockerfile: development/Dockerfile
     args:
       NAUTOBOT_VERSION: ${NAUTOBOT_VERSION:-2.4}
-      RAILYARD_SYNC_REF: ${RAILYARD_SYNC_REF:-v0.2.0}
+      RAILYARD_SYNC_REF: ${RAILYARD_SYNC_REF:-v0.2.1}
   image: nautobot-app-railyard-dev:latest
   environment:
     NAUTOBOT_DB_HOST: db

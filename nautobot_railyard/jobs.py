@@ -30,24 +30,32 @@ from railyard_sync.dcim.nautobot import NautobotLoader
 from railyard_sync.dcim_http import APIError
 from railyard_sync.errors import (
     RailyardAPIError,
-    RailyardConflictError,
     RailyardPlanError,
     RailyardPlanLimitError,
-    RailyardPreconditionError,
     RailyardTokenRejectedError,
 )
 from railyard_sync.export.nautobot_rest import NautobotClient
 from railyard_sync.export.policy import insecure_url
 from railyard_sync.export.run import SyncRefused, sync_to_nautobot
 from railyard_sync.export.sync_document import SyncDocumentError
-from railyard_sync.importer import RailyardCatalogue, build_project, flow
+from railyard_sync.importer.run import (
+    ImportRefused,
+    ImportRun,
+    check_failure,
+    conflicts_message,
+    doc_count,
+    import_summary,
+)
 from railyard_sync.log import RedactingFilter
+from railyard_sync.plans import deliverable_plan_message, plan_limit_message
 
 from . import app_settings as config, policy
 from .inprocess import BASE_URL, TOKEN, InProcessSession
 
 name = "Railyard"  # the job grouping in Nautobot's UI
 
+#: What to do when Railyard's check refuses an import (the CLI's advice names its --no-validate flag).
+FIX = "Fix them in Nautobot (or in Railyard, for objects designed there) and import again."
 #: The most lines of one list (changes, conflicts…) a job logs before saying how many more there are.
 LOG_CAP = 250
 
@@ -219,7 +227,7 @@ class ExportFromRailyard(_RailyardJob):
                     project, change_request_id=(change_request or "").strip() or None
                 )
             except RailyardPlanError as exc:
-                self._fail(railyard_cli.deliverable_plan_message(exc, "Nautobot"))
+                self._fail(deliverable_plan_message(exc, "Nautobot"))
             except RailyardTokenRejectedError as exc:
                 self._fail(f"{exc} Ask a Nautobot administrator to rotate the token.")
             except RailyardAPIError as exc:
@@ -333,77 +341,65 @@ class ImportIntoRailyard(_RailyardJob):
             loader = NautobotLoader(config.nautobot_url(), TOKEN, session=InProcessSession(self.user))
             try:
                 snapshot = loader.load(chosen or None)
-                plan = flow.plan_import(
+                run = ImportRun(
                     client,
                     snapshot,
                     project=project or None,
                     name=new_project or None,
-                    build=build_project,
-                    catalogue=RailyardCatalogue(client.get_json),
                     allow_deletes=allow_deletes,
-                    requested=chosen,
+                    requested_sites=chosen,
                     place_flag="",
+                    name_taken_hint="refresh it instead, or choose another name",
                 )
-            except (DCIMError, flow.ImportRefused, RailyardAPIError, ValueError) as exc:
+                run.fetch()
+                built = run.build()
+                run.merge()
+            except (DCIMError, ImportRefused, RailyardAPIError, ValueError) as exc:
                 self._fail(f"{exc} Nothing was saved to Railyard.")
 
-            for line in flow.import_summary(snapshot, plan.imported, plan.report).splitlines():
+            for line in import_summary(snapshot, built.project, built.report).splitlines():
                 self.logger.info(line)
-            if plan.diff is not None:
-                for line in plan.diff.summary().splitlines():
+            if run.diff is not None:
+                for line in run.diff.summary().splitlines():
                     self.logger.info(line)
-            self._log_lines("Conflicts with the Railyard design", [str(c) for c in plan.conflicts], level="warning")
+            self._log_lines("Conflicts with the Railyard design", [str(c) for c in run.conflicts], level="warning")
 
             if dry_run:
-                problems = flow.preflight(client, plan.document, plan.existing)
+                problems = run.check()
                 if problems:
-                    self.logger.warning(flow.preflight_failure(problems, dry_run=True, source="nautobot"))
-                action = f"refresh {plan.name!r}" if plan.refresh else f"create {plan.name!r}"
+                    self.logger.warning(check_failure(problems, dry_run=True, source="nautobot", fix=FIX))
+                action = f"refresh {run.name!r}" if run.refreshing else f"create {run.name!r}"
                 self.logger.info(f"Dry run: would {action}. Nothing was saved to Railyard.")
-                return self._result(plan, None, dry_run=True, problems=problems)
-            if plan.conflicts:
-                self._fail(
-                    f"{len(plan.conflicts)} conflict(s) between Railyard's design and Nautobot (listed above); resolve "
-                    "them in Railyard, then import again. Nothing was saved."
-                )
-            if plan.up_to_date:
-                self.logger.info(f"{plan.name!r} is already up to date with Nautobot; nothing was saved.")
-                return self._result(plan, plan.revision, dry_run=False, problems=[])
-            problems = flow.preflight(client, plan.document, plan.existing)
+                return self._result(run, run.revision, dry_run=True, problems=problems)
+            if run.conflicts:
+                self._fail(conflicts_message(len(run.conflicts), "nautobot"))
+            if run.up_to_date():
+                self.logger.info(f"{run.name!r} is already up to date with Nautobot; nothing was saved.")
+                return self._result(run, run.revision, dry_run=False, problems=[])
+            problems = run.check()
             if problems:
-                self._fail(flow.preflight_failure(problems, dry_run=False, source="nautobot"))
+                self._fail(check_failure(problems, dry_run=False, source="nautobot", fix=FIX))
             try:
-                revision = flow.save(client, plan)
+                revision = run.save()
             except RailyardPlanLimitError as exc:
-                self._fail(railyard_cli.plan_limit_message(exc, refreshing=plan.refresh, places="locations"))
-            except RailyardPreconditionError:
-                self._fail(
-                    f"{plan.name!r} changed in Railyard while the import ran, so it was not overwritten. Run the "
-                    "import again: it merges onto the latest revision."
-                )
-            except RailyardConflictError as exc:
-                if exc.code == "name_taken":
-                    self._fail(
-                        f"An estate named {plan.name!r} already exists: refresh it instead, or choose another name."
-                    )
+                self._fail(plan_limit_message(exc, refreshing=run.refreshing, places="locations"))
+            except (ImportRefused, RailyardAPIError) as exc:
                 self._fail(str(exc))
-            except RailyardAPIError as exc:
-                self._fail(str(exc))
-        verb = "Refreshed" if plan.refresh else "Created"
-        self.logger.info(f"{verb} {plan.name!r} ({plan.project_id}) at revision {revision} in Railyard.")
-        return self._result(plan, revision, dry_run=False, problems=[])
+        verb = "Refreshed" if run.refreshing else "Created"
+        self.logger.info(f"{verb} {run.name!r} ({run.project_id}) at revision {revision} in Railyard.")
+        return self._result(run, revision, dry_run=False, problems=[])
 
     @staticmethod
-    def _result(plan, revision, *, dry_run: bool, problems: list[str]) -> dict:
+    def _result(run: ImportRun, revision, *, dry_run: bool, problems: list[str]) -> dict:
         return {
             "dry_run": dry_run,
-            "project_id": plan.project_id,
-            "name": plan.name,
-            "refresh": plan.refresh,
+            "project_id": run.project_id,
+            "name": run.name,
+            "refresh": run.refreshing,
             "revision": revision,
-            "counts": flow.document_counts(plan.document),
-            "diff": plan.diff.to_dict() if plan.diff is not None else None,
-            "conflicts": len(plan.conflicts),
+            "counts": doc_count(run.document),
+            "diff": run.diff.to_dict() if run.diff is not None else None,
+            "conflicts": len(run.conflicts),
             "problems": problems,
         }
 
