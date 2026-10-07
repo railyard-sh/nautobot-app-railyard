@@ -1,0 +1,72 @@
+# Local Nautobot with the Railyard app: `docker compose -f development/docker-compose.yml up --build`.
+# Nautobot listens on 127.0.0.1:8080 only. See development/README.md.
+x-nautobot: &nautobot
+  build:
+    context: ..
+    dockerfile: development/Dockerfile
+    args:
+      NAUTOBOT_VERSION: ${NAUTOBOT_VERSION:-2.4}
+      RAILYARD_SYNC_REF: ${RAILYARD_SYNC_REF:-v0.2.0}
+  image: nautobot-app-railyard-dev:latest
+  environment:
+    NAUTOBOT_DB_HOST: db
+    NAUTOBOT_DB_NAME: nautobot
+    NAUTOBOT_DB_USER: nautobot
+    NAUTOBOT_DB_PASSWORD: nautobot-dev-only
+    NAUTOBOT_REDIS_HOST: redis
+    NAUTOBOT_REDIS_PORT: "6379"
+    NAUTOBOT_ALLOWED_HOSTS: "localhost 127.0.0.1"
+    NAUTOBOT_CONFIG: /opt/nautobot/nautobot_config.py
+    NAUTOBOT_URL: http://localhost:8080
+    # Passed through from your shell (or a .env file next to this one, never committed).
+    RAILYARD_URL: ${RAILYARD_URL:-https://railyard.sh}
+    RAILYARD_TOKEN: ${RAILYARD_TOKEN:-}
+    RAILYARD_ORG: ${RAILYARD_ORG:-}
+    RAILYARD_ALLOWED_ORGS: ${RAILYARD_ALLOWED_ORGS:-}
+  volumes:
+    - ../nautobot_railyard:/source/nautobot_railyard
+    - ./nautobot_config.py:/opt/nautobot/nautobot_config.py:ro
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
+services:
+  nautobot:
+    <<: *nautobot
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
+  worker:
+    <<: *nautobot
+    entrypoint: ["nautobot-server", "celery", "worker", "-l", "INFO", "--events"]
+    depends_on:
+      nautobot:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nautobot
+      POSTGRES_USER: nautobot
+      POSTGRES_PASSWORD: nautobot-dev-only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nautobot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  pgdata:

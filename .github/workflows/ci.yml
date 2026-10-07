@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint and policy tests (no Nautobot)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install "ruff>=0.6"
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Policy tests
+        run: python -m unittest -v nautobot_railyard.tests.test_policy
+
+  nautobot:
+    name: app tests (Nautobot ${{ matrix.nautobot }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nautobot: ["2.3.*", "2.4.*"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nautobot
+          POSTGRES_PASSWORD: nautobot
+          POSTGRES_DB: nautobot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      NAUTOBOT_DB_HOST: localhost
+      NAUTOBOT_DB_USER: nautobot
+      NAUTOBOT_DB_PASSWORD: nautobot
+      NAUTOBOT_DB_NAME: nautobot
+      NAUTOBOT_REDIS_HOST: localhost
+      NAUTOBOT_REDIS_PORT: "6379"
+      NAUTOBOT_CONFIG: development/nautobot_config.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Nautobot and the app (with railyard-sync from its release tag)
+        run: |
+          pip install "nautobot==${{ matrix.nautobot }}"
+          pip install -e .
+          pip list | grep -Ei "^(nautobot|railyard-sync|diffsync) "
+      - name: Test
+        run: nautobot-server --config=development/nautobot_config.py test nautobot_railyard --noinput --parallel 1
