@@ -147,8 +147,8 @@ Railyard user can see**. Limit both the token and the user:
 
 If the token is wrong, revoked or expired, Railyard answers 401 and the job fails saying so. A 403 means the token
 works but cannot do this: its user may not read (or, for an import, change) that organisation or project, the
-token is *Read only* and the import tried to save, the organisation does not allow personal access tokens, or the
-estate's main design takes changes only through merge requests (which the import cannot save to).
+token is *Read only* and the import tried to save, the organisation does not allow personal access tokens, or the user may change the estate only through merge
+requests (its main requires approvals, or the user's role only proposes changes), which the import cannot save to.
 
 ### Nautobot permissions
 
