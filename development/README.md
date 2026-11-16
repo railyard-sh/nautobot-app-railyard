@@ -6,8 +6,9 @@ hand and the test suite in containers.
 ## Prerequisites
 
 - Docker running.
-- For real runs against Railyard: a **Railyard personal access token** (`ry_…`) for a dedicated user (viewer to
-  export; editor in the organisations you import into), with a short expiry. Never commit it.
+- For real runs against Railyard: a **Railyard personal access token** (`ry_…`, created under User settings → API
+  tokens) for a dedicated user, with a short expiry: *Read only* (and a viewer user) to export; *Read and write*
+  (and an editor in the organisations you import into) to save an import. Never commit it.
 
 ## Bring it up
 
