@@ -12,6 +12,9 @@ Both are Nautobot Jobs, built on [railyard-sync](https://github.com/railyard-sh/
 Railyard's DCIM integrations (the same code as its `railyard-sync export nautobot` and `import nautobot` commands
 and the NetBox plugin's).
 
+Railyard's guide to working with Nautobot, from either side, is
+[NetBox & Nautobot](https://railyard.sh/docs/netbox-nautobot) in the Railyard documentation.
+
 > [!WARNING]
 > **Pre-1.0 software that writes to your Nautobot. Back up your Nautobot database before every export.** Run a
 > **dry run** first and read its job log before applying anything, and try it on a copy of your Nautobot before
