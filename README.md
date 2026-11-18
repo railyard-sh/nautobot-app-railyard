@@ -12,6 +12,9 @@ Both are Nautobot Jobs, built on [railyard-sync](https://github.com/railyard-sh/
 Railyard's DCIM integrations (the same code as its `railyard-sync export nautobot` and `import nautobot` commands
 and the NetBox plugin's).
 
+Railyard's guide to working with Nautobot, from either side, is
+[NetBox & Nautobot](https://railyard.sh/docs/netbox-nautobot) in the Railyard documentation.
+
 > [!WARNING]
 > **Pre-1.0 software that writes to your Nautobot. Back up your Nautobot database before every export.** Run a
 > **dry run** first and read its job log before applying anything, and try it on a copy of your Nautobot before
@@ -82,13 +85,17 @@ design stop the save. Railyard checks the document before it is saved.
 
 ## Install
 
-The app needs **Nautobot 2.3 or 2.4** on **Python 3.12** (railyard-sync's minimum).
+The app needs **Nautobot 2.3 or 2.4** on **Python 3.12** (railyard-sync's minimum). Nautobot 3.x is not
+supported yet: the app declares 2.x as its maximum, so Nautobot will not load it.
 
 ```bash
 pip install "nautobot-app-railyard @ git+https://github.com/railyard-sh/nautobot-app-railyard"   # (until published)
 ```
 
-This also installs railyard-sync from its release tag. Then enable the app in `nautobot_config.py`:
+Neither the app nor railyard-sync is on PyPI yet, so both come from GitHub (pip needs `git`); this also installs
+railyard-sync from its release tag (`v0.2.1`, pinned in `pyproject.toml`). Without `git` on the Nautobot host,
+install `https://github.com/railyard-sh/railyard-sync/archive/refs/tags/v0.2.1.tar.gz` first, then the app from a
+checkout with `pip install --no-deps`. Then enable the app in `nautobot_config.py`:
 
 ```python
 PLUGINS = ["nautobot_railyard"]
@@ -118,21 +125,33 @@ Railyard; Nautobot installs new jobs disabled).
 
 ### The Railyard token: least privilege, expiry and rotation
 
-Every job uses the one token configured here, whichever Nautobot user runs it, and it can read **everything its
-Railyard user can see** (Railyard tokens aren't scoped yet):
+Every job uses the one token configured here, whichever Nautobot user runs it, and it can reach **everything its
+Railyard user can see**. Limit both the token and the user:
 
 1. **Use a dedicated Railyard user**, not a person's account, a member of only the organisations you configure.
-2. Give it the **viewer** role if you only export from Railyard; the import saves estates, so it needs
-   **editor** in the organisations it imports into.
-3. Create its token under **User settings → Personal access tokens**, with the shortest expiry you are prepared
-   to rotate (90 days by default).
+2. **Give the token the least access that works.** A Railyard token is *Read only* or *Read and write*, chosen
+   when it is created:
+
+   | Job | Token access | Railyard role of the token's user |
+   |---|---|---|
+   | Export from Railyard (applying a design to Nautobot), dry run or real | *Read only* | *viewer* is enough |
+   | Import into Railyard, dry run | *Read only* | *viewer* is enough |
+   | Import into Railyard, saving the estate | **Read and write** | *editor* in the organisations it imports into |
+
+   If you only export, give the app a *Read only* token: then it cannot change anything in Railyard, whatever the
+   user's role. With a *Read only* token, an import's save fails with a message saying the token is read-only,
+   and nothing is saved.
+3. Create its token under **User settings → API tokens**, with the shortest expiry you are prepared to rotate
+   (90 days by default).
 4. Store it as a Nautobot Secret, in a file readable only by Nautobot, or in the workers' environment — never in
    `nautobot_config.py` or version control. The jobs read it when they start, so a rotated file or secret needs
    no restart.
 5. **Rotate it before it expires**, then revoke the old one in Railyard.
 
 If the token is wrong, revoked or expired, Railyard answers 401 and the job fails saying so. A 403 means the token
-works but its user may not read (or, for an import, change) that organisation or project.
+works but cannot do this: its user may not read (or, for an import, change) that organisation or project, the
+token is *Read only* and the import tried to save, the organisation does not allow personal access tokens, or the user may change the estate only through merge
+requests (its main requires approvals, or the user's role only proposes changes), which the import cannot save to.
 
 ### Nautobot permissions
 
